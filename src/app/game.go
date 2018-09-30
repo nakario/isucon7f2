@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"encoding/binary"
 	"fmt"
 	"log"
 	"math"
@@ -14,7 +12,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
 	"github.com/jmoiron/sqlx"
-	"github.com/willf/bloom"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -242,28 +239,22 @@ var testReqCh = make(chan IsuReq, 0)
 var initCh = make(chan struct{}, 0)
 
 func isuFilterHandler() {
-	filters := make(map[string]*bloom.BloomFilter)
-	b := make([]byte, 8)
+	filters := make(map[string]map[int64]struct{})
 	for {
 		select {
 		case addReq := <-addReqCh:
-			filter, ok := filters[addReq.roomName]
-			if !ok {
-				filter = bloom.New(8096, 5)
-				filters[addReq.roomName] = filter
+			if _, ok := filters[addReq.roomName]; !ok {
+				filters[addReq.roomName] = make(map[int64]struct{})
 			}
-			binary.BigEndian.PutUint64(b, uint64(addReq.reqTime))
-			filter.Add(b)
+			filters[addReq.roomName][addReq.reqTime] = struct{}{}
 		case testReq := <-testReqCh:
-			filter, ok := filters[testReq.roomName]
-			if !ok {
-				filter = bloom.New(8096, 5)
-				filters[testReq.roomName] = filter
+			if _, ok := filters[testReq.roomName]; !ok {
+				filters[testReq.roomName] = make(map[int64]struct{})
 			}
-			binary.BigEndian.PutUint64(b, uint64(testReq.reqTime))
-			testReq.ch <- filter.Test(b)
+			_, ok := filters[testReq.roomName][testReq.reqTime]
+			testReq.ch <- ok
 		case <-initCh:
-			filters = make(map[string]*bloom.BloomFilter)
+			filters = make(map[string]map[int64]struct{})
 		}
 	}
 }
@@ -285,32 +276,22 @@ func addIsu(roomName string, reqIsu *big.Int, reqTime int64) bool {
 	testReqCh <- IsuReq{roomName, reqTime, ch}
 	exist := <-ch
 	if exist {
-		// boom filter may return exist=true even if the item is not in the set actually
 		isu := big.NewInt(0)
 		var isuStr string
 		err = tx.QueryRow("SELECT isu FROM adding WHERE room_name = ? AND time = ? FOR UPDATE", roomName, reqTime).Scan(&isuStr)
-		if err == sql.ErrNoRows {
-			_, err = tx.Exec("INSERT INTO adding(room_name, time, isu) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE isu=isu", roomName, reqTime, reqIsu.String())
-			if err != nil {
-				log.Println(err)
-				tx.Rollback()
-				return false
-			}
-			addReqCh <- IsuReq{roomName, reqTime, nil}
-		} else if err != nil {
+		if err != nil {
 			log.Println(err)
 			tx.Rollback()
 			return false
-		} else {
-			isu = str2big(isuStr)
+		}
+		isu = str2big(isuStr)
 
-			isu.Add(isu, reqIsu)
-			_, err = tx.Exec("UPDATE adding SET isu = ? WHERE room_name = ? AND time = ?", isu.String(), roomName, reqTime)
-			if err != nil {
-				log.Println(err)
-				tx.Rollback()
-				return false
-			}
+		isu.Add(isu, reqIsu)
+		_, err = tx.Exec("UPDATE adding SET isu = ? WHERE room_name = ? AND time = ?", isu.String(), roomName, reqTime)
+		if err != nil {
+			log.Println(err)
+			tx.Rollback()
+			return false
 		}
 	} else {
 		_, err = tx.Exec("INSERT INTO adding(room_name, time, isu) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE isu=isu", roomName, reqTime, reqIsu.String())
