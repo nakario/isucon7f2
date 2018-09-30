@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 	"github.com/pquerna/ffjson/ffjson"
+	"github.com/go-redis/redis"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
 	"github.com/jmoiron/sqlx"
@@ -113,7 +114,6 @@ func WriteCustomJSON(c *websocket.Conn,v interface{}) error {
 	return err2
 }
 
-
 func str2big(s string) *big.Int {
 	x := new(big.Int)
 	x.SetString(s, 10)
@@ -195,16 +195,11 @@ func getCurrentTime() int64 {
 // 状態になることに注意 (keyword: MVCC, repeatable read).
 func updateRoomTime(tx *sqlx.Tx, roomName string, reqTime int64) (int64, bool) {
 	// See page 13 and 17 in https://www.slideshare.net/ichirin2501/insert-51938787
-	_, err := tx.Exec("INSERT INTO room_time(room_name, time) VALUES (?, 0) ON DUPLICATE KEY UPDATE time = time", roomName)
-	if err != nil {
-		log.Println(err)
-		return 0, false
-	}
-
 	var roomTime int64
-	err = tx.Get(&roomTime, "SELECT time FROM room_time WHERE room_name = ? FOR UPDATE", roomName)
-	if err != nil {
-		log.Println(err)
+	roomTime, err := client.GetBit(roomName, 0).Result()
+	if err == redis.Nil {
+		roomTime = 0
+	} else if err != nil {
 		return 0, false
 	}
 
@@ -220,9 +215,8 @@ func updateRoomTime(tx *sqlx.Tx, roomName string, reqTime int64) (int64, bool) {
 		}
 	}
 
-	_, err = tx.Exec("UPDATE room_time SET time = ? WHERE room_name = ?", currentTime, roomName)
+	err = client.Set(roomName, currentTime, 0).Err()
 	if err != nil {
-		log.Println(err)
 		return 0, false
 	}
 
