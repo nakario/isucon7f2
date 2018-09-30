@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 	"sync"
+	"sort"
 	"time"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
@@ -423,10 +424,12 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		itemBuilding = make([][]Building,len(itemLists))  // ItemID => Buildings
 		itemPower0   = make([]Exponential,len(itemLists)) // ItemID => currentTime における Power
 		itemBuilt0   = make([]int,len(itemLists))        // ItemID => currentTime における BuiltCount
-
-		addingAt = map[int64]Adding{}   // Time => currentTime より先の Adding
-		buyingAt = map[int64][]Buying{} // Time => currentTime より先の Buying
 	)
+	// WARN: 消したい
+	sort.Slice(addings, func(i, j int) bool { return addings[i].Time < addings[j].Time })
+	sort.Slice(buyings, func(i, j int) bool { return buyings[i].Time < buyings[j].Time })
+	aIndex := len(addings)
+	bIndex := len(buyings)
 
 	for itemID := range itemLists {
 		if itemID == 0 { continue }
@@ -434,21 +437,22 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		itemBuilding[itemID] = []Building{}
 	}
 
-	for _, a := range addings {
+	for i, a := range addings {
 		// adding は adding.time に isu を増加させる
 		if a.Time <= currentTime {
 			totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(str2big(a.Isu), big1000))
 		} else {
-			addingAt[a.Time] = a
+			aIndex = i
+			break
 		}
 	}
+	aStartIndex := aIndex
 
-	for _, b := range buyings {
+	for i, b := range buyings {
 		// buying は 即座に isu を消費し buying.time からアイテムの効果を発揮する
 		itemBought[b.ItemID]++
 		m := itemLists[b.ItemID]
 		totalMilliIsu.Sub(totalMilliIsu, new(big.Int).Mul(m.GetPrice(b.Ordinal), big1000))
-
 		if b.Time <= currentTime {
 			itemBuilt[b.ItemID]++
 			power := m.GetPower(itemBought[b.ItemID])
@@ -456,7 +460,8 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 			totalPower.Add(totalPower, power)
 			itemPower[b.ItemID].Add(itemPower[b.ItemID], power)
 		} else {
-			buyingAt[b.Time] = append(buyingAt[b.Time], b)
+			bIndex = i
+			break
 		}
 	}
 
@@ -487,38 +492,26 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		updated := false
 
 		// 時刻 t で発生する adding を計算する
-		if a, ok := addingAt[t]; ok {
+		if aIndex < len(addings) && addings[aIndex].Time == t {
 			updated = true
+			a := addings[aIndex]
 			totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(str2big(a.Isu), big1000)) //
+			aIndex ++
 		}
-
-		// 時刻 t で発生する buying を計算する
-		if _, ok := buyingAt[t]; ok {
+		for ; bIndex < len(buyings) && buyings[bIndex].Time == t ;bIndex++ {
 			updated = true
-			// updatedID := map[int]bool{}
-			for _, b := range buyingAt[t] {
-				m := itemLists[b.ItemID]
-				// updatedID[b.ItemID] = true
-				itemBuilt[b.ItemID]++
-				power := m.GetPower(b.Ordinal)
-				itemPower[b.ItemID].Add(itemPower[b.ItemID], power)
-				totalPower.Add(totalPower, power)
-
-				// bad
-				id := b.ItemID
-				itemBuilding[id] = append(itemBuilding[id], Building{
-					Time:       t,
-					CountBuilt: itemBuilt[id],
-					Power:      big2exp(itemPower[id]),
-				})
-			}
-			// for id := range updatedID {
-			// 	itemBuilding[id] = append(itemBuilding[id], Building{
-			// 		Time:       t,
-			// 		CountBuilt: itemBuilt[id],
-			// 		Power:      big2exp(itemPower[id]),
-			// 	})
-			// }
+			b := buyings[bIndex]
+			m := itemLists[b.ItemID]
+			itemBuilt[b.ItemID]++
+			power := m.GetPower(b.Ordinal)
+			itemPower[b.ItemID].Add(itemPower[b.ItemID], power)
+			totalPower.Add(totalPower, power)
+			id := b.ItemID
+			itemBuilding[id] = append(itemBuilding[id], Building{
+				Time:       t,
+				CountBuilt: itemBuilt[id],
+				Power:      big2exp(itemPower[id]),
+			})
 		}
 
 		if updated {
@@ -542,7 +535,8 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 	}
 
 	gsAdding := []Adding{}
-	for _, a := range addingAt {
+	for i, a := range addings {
+		if i < aStartIndex { continue }
 		gsAdding = append(gsAdding, a)
 	}
 
