@@ -487,6 +487,7 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 
 		itemPower    = map[int]*big.Int{}    // ItemID => Power
 		itemPrice    = map[int]*big.Int{}    // ItemID => Price
+		itemPricex1000 = map[int]*big.Int{}   // itemPricex1000
 		itemOnSale   = map[int]int64{}       // ItemID => OnSale
 		itemBuilt    = map[int]int{}         // ItemID => BuiltCount
 		itemBought   = map[int]int{}         // ItemID => CountBought
@@ -534,7 +535,8 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 		itemBuilt0[m.ItemID] = itemBuilt[m.ItemID]
 		price := m.GetPrice(itemBought[m.ItemID] + 1)
 		itemPrice[m.ItemID] = price
-		if 0 <= totalMilliIsu.Cmp(new(big.Int).Mul(price, big1000)) {
+		itemPricex1000[m.ItemID] = new(big.Int).Mul(price, big1000)
+		if 0 <= totalMilliIsu.Cmp(itemPricex1000[m.ItemID]) {
 			itemOnSale[m.ItemID] = 0 // 0 は 時刻 currentTime で購入可能であることを表す
 		}
 	}
@@ -548,14 +550,15 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 	}
 
 	// currentTime から 1000 ミリ秒先までシミュレーションする
+
 	for t := currentTime + 1; t <= currentTime+1000; t++ {
-		totalMilliIsu.Add(totalMilliIsu, totalPower)
+		totalMilliIsu.Add(totalMilliIsu, totalPower) //
 		updated := false
 
 		// 時刻 t で発生する adding を計算する
 		if a, ok := addingAt[t]; ok {
 			updated = true
-			totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(str2big(a.Isu), big1000))
+			totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(str2big(a.Isu), big1000)) //
 		}
 
 		// 時刻 t で発生する buying を計算する
@@ -592,7 +595,7 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 			if _, ok := itemOnSale[itemID]; ok {
 				continue
 			}
-			if 0 <= totalMilliIsu.Cmp(new(big.Int).Mul(itemPrice[itemID], big1000)) {
+			if 0 <= totalMilliIsu.Cmp(itemPrice[itemID]) { //
 				itemOnSale[itemID] = t
 			}
 		}
