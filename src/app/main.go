@@ -73,7 +73,7 @@ func redis_connection() *redis.Client {
 	})
 	_, err := client.Ping().Result()
 	if err != nil {
-		panic(err)
+		log.Printf("Fail ", err)
 	}
 	return c
 }
