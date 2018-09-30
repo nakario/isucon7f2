@@ -288,17 +288,6 @@ func buyItem(roomName string, itemID int, countBought int, reqTime int64) bool {
 		return false
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Println(err)
-		return false
-	}
-
-	tx, err = db.Beginx()
-	if err != nil {
-		log.Println(err)
-		return false
-	}
-
 	var countBuying int
 	err = tx.Get(&countBuying, "SELECT COUNT(*) FROM buying WHERE room_name = ? AND item_id = ?", roomName, itemID)
 	if err != nil {
