@@ -554,6 +554,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 	gsOnSale := []OnSale{}
 	for itemID, t := range itemOnSale {
 		if itemID == 0 { continue }
+		if t == -1 { continue }
 		gsOnSale = append(gsOnSale, OnSale{
 			ItemID: itemID,
 			Time:   t,
