@@ -233,6 +233,17 @@ func addIsu(roomName string, reqIsu *big.Int, reqTime int64) bool {
 		return false
 	}
 
+	if err := tx.Commit(); err != nil {
+		log.Println(err)
+		return false
+	}
+
+	tx, err = db.Beginx()
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+
 	_, err = tx.Exec("INSERT INTO adding(room_name, time, isu) VALUES (?, ?, '0') ON DUPLICATE KEY UPDATE isu=isu", roomName, reqTime)
 	if err != nil {
 		log.Println(err)
@@ -274,6 +285,17 @@ func buyItem(roomName string, itemID int, countBought int, reqTime int64) bool {
 	_, ok := updateRoomTime(tx, roomName, reqTime)
 	if !ok {
 		tx.Rollback()
+		return false
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Println(err)
+		return false
+	}
+
+	tx, err = db.Beginx()
+	if err != nil {
+		log.Println(err)
 		return false
 	}
 
@@ -368,6 +390,17 @@ func getStatus(roomName string) (*GameStatus, error) {
 	if !ok {
 		tx.Rollback()
 		return nil, fmt.Errorf("updateRoomTime failure")
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Println(err)
+		return nil, err
+	}
+
+	tx, err = db.Beginx()
+	if err != nil {
+		log.Println(err)
+		return nil, err
 	}
 
 	addings := []Adding{}
