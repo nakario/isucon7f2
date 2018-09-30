@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-redis/redis"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
 	"github.com/jmoiron/sqlx"
@@ -195,7 +196,7 @@ func getCurrentTime() int64 {
 func updateRoomTime(tx *sqlx.Tx, roomName string, reqTime int64) (int64, bool) {
 	// See page 13 and 17 in https://www.slideshare.net/ichirin2501/insert-51938787
 	var roomTime int64
-	roomTime, err := client.Get(room_name).Result()
+	roomTime, err := client.Get(roomName).Result()
 	if err == redis.Nil {
 		roomTime = 0
 	} else if err != nil {
@@ -214,7 +215,7 @@ func updateRoomTime(tx *sqlx.Tx, roomName string, reqTime int64) (int64, bool) {
 		}
 	}
 
-	err := client.Set(room_name, currentTime, 0).Err()
+	err = client.Set(roomName, currentTime, 0).Err()
 	if err != nil {
 		return 0, false
 	}

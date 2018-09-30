@@ -11,6 +11,7 @@ import (
 
 	"net/http/pprof"
 
+	"github.com/go-redis/redis"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -72,7 +73,7 @@ func redis_connection() *redis.Client {
 	})
 	pong, err := client.Ping().Result()
 	if err != nil {
-		exit(1)
+		panic(err)
 	}
 	return c
 }
