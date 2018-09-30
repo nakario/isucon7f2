@@ -14,15 +14,17 @@ import (
 	"github.com/jmoiron/sqlx"
 	"golang.org/x/sync/singleflight"
 )
+
 var big1000 = big.NewInt(1000)
 
+const duration = 700 * time.Millisecond
 
-const duration = 100 * time.Millisecond
 var group singleflight.Group
 var rooms sync.Map
+
 type Room struct {
 	wg *sync.WaitGroup
-	c *sync.Cond
+	c  *sync.Cond
 }
 
 type GameRequest struct {
