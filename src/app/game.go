@@ -249,7 +249,7 @@ func isuFilterHandler() {
 		case addReq := <-addReqCh:
 			filter, ok := filters[addReq.roomName]
 			if !ok {
-				filter := bloom.New(8096, 5)
+				filter = bloom.New(8096, 5)
 				filters[addReq.roomName] = filter
 			}
 			binary.BigEndian.PutUint64(b, uint64(addReq.reqTime))
@@ -257,7 +257,7 @@ func isuFilterHandler() {
 		case testReq := <-testReqCh:
 			filter, ok := filters[testReq.roomName]
 			if !ok {
-				filter := bloom.New(8096, 5)
+				filter = bloom.New(8096, 5)
 				filters[testReq.roomName] = filter
 			}
 			binary.BigEndian.PutUint64(b, uint64(testReq.reqTime))
