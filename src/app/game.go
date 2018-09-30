@@ -486,10 +486,10 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		// 時刻 t で発生する buying を計算する
 		if _, ok := buyingAt[t]; ok {
 			updated = true
-			updatedID := map[int]bool{}
+			// updatedID := map[int]bool{}
 			for _, b := range buyingAt[t] {
 				m := itemLists[b.ItemID]
-				updatedID[b.ItemID] = true
+				// updatedID[b.ItemID] = true
 				itemBuilt[b.ItemID]++
 				power := m.GetPower(b.Ordinal)
 				itemPower[b.ItemID].Add(itemPower[b.ItemID], power)
