@@ -408,6 +408,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		itemPower    = make([]*big.Int,len(itemLists))  // ItemID => Power
 		itemPrice    = make([]*big.Int,len(itemLists))    // ItemID => Price
 		itemPricex1000 = make([]*big.Int,len(itemLists)) // itemPricex1000
+		itemIsOnSale   = make([]bool,len(itemLists))       // ItemID => OnSale
 		itemOnSale   = make([]int64,len(itemLists))       // ItemID => OnSale
 		itemBuilt    = make([]int,len(itemLists))         // ItemID => BuiltCount
 		itemBought   = make([]int,len(itemLists))         // ItemID => CountBought
@@ -458,6 +459,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		itemPrice[m.ItemID] = price
 		itemPricex1000[m.ItemID] = new(big.Int).Mul(price, big1000)
 		if 0 <= totalMilliIsu.Cmp(itemPricex1000[m.ItemID]) {
+			itemIsOnSale[m.ItemID] = true
 			itemOnSale[m.ItemID] = 0 // 0 は 時刻 currentTime で購入可能であることを表す
 		}
 	}
@@ -516,6 +518,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 			if itemID == 0 { continue }
 
 			// WARN:
+			if itemIsOnSale [itemID] { continue }
 			// if _, ok := itemOnSale[itemID]; ok {
 				// continue
 			// }
@@ -545,6 +548,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 
 	gsOnSale := []OnSale{}
 	for itemID, t := range itemOnSale {
+		if itemID == 0 { continue }
 		gsOnSale = append(gsOnSale, OnSale{
 			ItemID: itemID,
 			Time:   t,
