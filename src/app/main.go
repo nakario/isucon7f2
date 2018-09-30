@@ -59,7 +59,7 @@ func initDB() {
 	var addings []Adding
 	db.Select(&addings, "SELECT * FROM adding")
 	for _, adding := range addings {
-		addReqCh <- IsuReq{adding.RoomName, adding.Time, nil}
+		addAddingCh <- addingReq{adding.RoomName, str2big(adding.Isu), adding.Time, nil}
 	}
 }
 
@@ -113,7 +113,7 @@ func attachPprof(router *mux.Router) {
 }
 
 func main() {
-	go isuFilterHandler()
+	go addingHandler()
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	initDB()

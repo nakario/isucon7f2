@@ -234,27 +234,52 @@ type IsuReq struct {
 	ch       chan bool
 }
 
-var addReqCh = make(chan IsuReq, 0)
 var testReqCh = make(chan IsuReq, 0)
 var initCh = make(chan struct{}, 0)
 
-func isuFilterHandler() {
-	filters := make(map[string]map[int64]struct{})
+type addingReq struct {
+	roomName string
+	reqIsu *big.Int
+	reqTime int64
+	ch chan map[int64]AddingRow
+}
+
+type AddingRow struct {
+	roomName string
+	reqIsu *big.Int
+	reqTime int64
+}
+
+var addAddingCh = make(chan addingReq, 0)
+var getAddingCh = make(chan addingReq, 0)
+
+func addingHandler() {
+	addings := make(map[string]map[int64]AddingRow)
 	for {
 		select {
-		case addReq := <-addReqCh:
-			if _, ok := filters[addReq.roomName]; !ok {
-				filters[addReq.roomName] = make(map[int64]struct{})
+		case req := <- addAddingCh:
+			if _, ok := addings[req.roomName]; !ok {
+				addings[req.roomName] = make(map[int64]AddingRow)
 			}
-			filters[addReq.roomName][addReq.reqTime] = struct{}{}
+			a, ok := addings[req.roomName][req.reqTime]
+			if !ok {
+				addings[req.roomName][req.reqTime] = AddingRow{req.roomName, req.reqIsu, req.reqTime}
+			} else {
+				addings[req.roomName][req.reqTime] = AddingRow{req.roomName, req.reqIsu.Add(req.reqIsu, a.reqIsu), req.reqTime}
+			}
+		case req := <- getAddingCh:
+			if _, ok := addings[req.roomName]; !ok {
+				addings[req.roomName] = make(map[int64]AddingRow)
+			}
+			req.ch <- addings[req.roomName]
 		case testReq := <-testReqCh:
-			if _, ok := filters[testReq.roomName]; !ok {
-				filters[testReq.roomName] = make(map[int64]struct{})
+			if _, ok := addings[testReq.roomName]; !ok {
+				addings[testReq.roomName] = make(map[int64]AddingRow)
 			}
-			_, ok := filters[testReq.roomName][testReq.reqTime]
+			_, ok := addings[testReq.roomName][testReq.reqTime]
 			testReq.ch <- ok
-		case <-initCh:
-			filters = make(map[string]map[int64]struct{})
+		case <- initCh:
+				addings = make(map[string]map[int64]AddingRow)
 		}
 	}
 }
@@ -272,11 +297,11 @@ func addIsu(roomName string, reqIsu *big.Int, reqTime int64) bool {
 		return false
 	}
 
+	isu := big.NewInt(0)
 	ch := make(chan bool)
 	testReqCh <- IsuReq{roomName, reqTime, ch}
 	exist := <-ch
 	if exist {
-		isu := big.NewInt(0)
 		var isuStr string
 		err = tx.QueryRow("SELECT isu FROM adding WHERE room_name = ? AND time = ? FOR UPDATE", roomName, reqTime).Scan(&isuStr)
 		if err != nil {
@@ -294,19 +319,20 @@ func addIsu(roomName string, reqIsu *big.Int, reqTime int64) bool {
 			return false
 		}
 	} else {
+		isu = reqIsu
 		_, err = tx.Exec("INSERT INTO adding(room_name, time, isu) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE isu=isu", roomName, reqTime, reqIsu.String())
 		if err != nil {
 			log.Println(err)
 			tx.Rollback()
 			return false
 		}
-		addReqCh <- IsuReq{roomName, reqTime, nil}
 	}
 
 	if err := tx.Commit(); err != nil {
 		log.Println(err)
 		return false
 	}
+	addAddingCh <- addingReq{roomName, isu, reqTime, nil}
 	return true
 }
 
@@ -337,16 +363,15 @@ func buyItem(roomName string, itemID int, countBought int, reqTime int64) bool {
 	}
 
 	totalMilliIsu := new(big.Int)
-	var addings []Adding
-	err = tx.Select(&addings, "SELECT isu FROM adding WHERE room_name = ? AND time <= ?", roomName, reqTime)
-	if err != nil {
-		log.Println(err)
-		tx.Rollback()
-		return false
-	}
+	ch := make(chan map[int64]AddingRow)
+	getAddingCh <- addingReq{roomName, nil, reqTime, ch}
+	addings := <- ch
 
 	for _, a := range addings {
-		totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(str2big(a.Isu), big1000))
+		if a.reqTime > reqTime {
+			continue
+		}
+		totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(a.reqIsu, big1000))
 	}
 
 	var buyings []Buying
@@ -416,12 +441,9 @@ func getStatus(roomName string) (*GameStatus, error) {
 		return nil, fmt.Errorf("updateRoomTime failure")
 	}
 
-	addings := []Adding{}
-	err = tx.Select(&addings, "SELECT time, isu FROM adding WHERE room_name = ?", roomName)
-	if err != nil {
-		tx.Rollback()
-		return nil, err
-	}
+	ch := make(chan map[int64]AddingRow)
+	getAddingCh <- addingReq{roomName, nil, 0, ch}
+	addings := <- ch
 
 	buyings := []Buying{}
 	err = tx.Select(&buyings, "SELECT item_id, ordinal, time FROM buying WHERE room_name = ?", roomName)
@@ -445,7 +467,7 @@ func getStatus(roomName string) (*GameStatus, error) {
 	return status, err
 }
 
-func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameStatus, error) {
+func calcStatus(currentTime int64, addings map[int64]AddingRow, buyings []Buying) (*GameStatus, error) {
 	var (
 		// 1ミリ秒に生産できる椅子の単位をミリ椅子とする
 		totalMilliIsu = big.NewInt(0)
@@ -475,10 +497,10 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 
 	for _, a := range addings {
 		// adding は adding.time に isu を増加させる
-		if a.Time <= currentTime {
-			totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(str2big(a.Isu), big1000))
+		if a.reqTime <= currentTime {
+			totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(a.reqIsu, big1000))
 		} else {
-			addingAt[a.Time] = a
+			addingAt[a.reqTime] = Adding{a.roomName, a.reqTime, a.reqIsu.String()}
 		}
 	}
 
