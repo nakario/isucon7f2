@@ -421,6 +421,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 	)
 
 	for itemID := range itemLists {
+		if itemID == 0 { continue }
 		itemPower[itemID] = big.NewInt(0)
 		itemBuilding[itemID] = []Building{}
 	}
@@ -497,6 +498,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 				totalPower.Add(totalPower, power)
 			}
 			for id := range updatedID {
+				if id == 0 { continue }
 				itemBuilding[id] = append(itemBuilding[id], Building{
 					Time:       t,
 					CountBuilt: itemBuilt[id],
@@ -516,12 +518,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		// 時刻 t で購入可能になったアイテムを記録する
 		for itemID := range itemLists {
 			if itemID == 0 { continue }
-
-			// WARN:
 			if itemIsOnSale [itemID] { continue }
-			// if _, ok := itemOnSale[itemID]; ok {
-				// continue
-			// }
 			if 0 <= totalMilliIsu.Cmp(itemPricex1000[itemID]) { //
 				itemOnSale[itemID] = t
 			}
