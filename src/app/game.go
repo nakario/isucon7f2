@@ -405,15 +405,15 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		totalMilliIsu = big.NewInt(0)
 		totalPower    = big.NewInt(0)
 
-		itemPower    = map[int]*big.Int{}    // ItemID => Power
-		itemPrice    = map[int]*big.Int{}    // ItemID => Price
-		itemPricex1000 = map[int]*big.Int{}   // itemPricex1000
-		itemOnSale   = map[int]int64{}       // ItemID => OnSale
-		itemBuilt    = map[int]int{}         // ItemID => BuiltCount
-		itemBought   = map[int]int{}         // ItemID => CountBought
-		itemBuilding = map[int][]Building{}  // ItemID => Buildings
-		itemPower0   = map[int]Exponential{} // ItemID => currentTime における Power
-		itemBuilt0   = map[int]int{}         // ItemID => currentTime における BuiltCount
+		itemPower    = make([]*big.Int,len(itemLists))  // ItemID => Power
+		itemPrice    = make([]*big.Int,len(itemLists))    // ItemID => Price
+		itemPricex1000 = make([]*big.Int,len(itemLists)) // itemPricex1000
+		itemOnSale   = make([]int64,len(itemLists))       // ItemID => OnSale
+		itemBuilt    = make([]int,len(itemLists))         // ItemID => BuiltCount
+		itemBought   = make([]int,len(itemLists))         // ItemID => CountBought
+		itemBuilding = make([][]Building,len(itemLists))  // ItemID => Buildings
+		itemPower0   = make([]Exponential,len(itemLists)) // ItemID => currentTime における Power
+		itemBuilt0   = make([]int,len(itemLists))        // ItemID => currentTime における BuiltCount
 
 		addingAt = map[int64]Adding{}   // Time => currentTime より先の Adding
 		buyingAt = map[int64][]Buying{} // Time => currentTime より先の Buying
@@ -485,7 +485,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		// 時刻 t で発生する buying を計算する
 		if _, ok := buyingAt[t]; ok {
 			updated = true
-			updatedID := map[int]bool{}
+			updatedID := make([]bool,len(itemLists))
 			for _, b := range buyingAt[t] {
 				m := itemLists[b.ItemID]
 				updatedID[b.ItemID] = true
@@ -514,9 +514,11 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		// 時刻 t で購入可能になったアイテムを記録する
 		for itemID := range itemLists {
 			if itemID == 0 { continue }
-			if _, ok := itemOnSale[itemID]; ok {
-				continue
-			}
+
+			// WARN:
+			// if _, ok := itemOnSale[itemID]; ok {
+				// continue
+			// }
 			if 0 <= totalMilliIsu.Cmp(itemPricex1000[itemID]) { //
 				itemOnSale[itemID] = t
 			}
