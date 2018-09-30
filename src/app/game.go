@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"sync"
 	"time"
+	"encoding/json"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
 	"github.com/jmoiron/sqlx"
@@ -113,6 +114,22 @@ type GameStatus struct {
 }
 
 
+
+func WriteCustomJSON(c *websocket.Conn,v interface{}) error {
+	w, err := c.NextWriter(websocket.TextMessage)
+	if err != nil {
+		return err
+	}
+	encoder := json.NewEncoder(w)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("","")
+	err1 := encoder.Encode(v)
+	err2 := w.Close()
+	if err1 != nil {
+		return err1
+	}
+	return err2
+}
 
 func str2big(s string) *big.Int {
 	x := new(big.Int)
@@ -612,7 +629,7 @@ func serveGameConn(ws *websocket.Conn, roomName string) {
 		return
 	}
 
-	err = ws.WriteJSON(status)
+	err = WriteCustomJSON(ws,status)
 	if err != nil {
 		log.Println(err)
 		return
@@ -671,14 +688,14 @@ func serveGameConn(ws *websocket.Conn, roomName string) {
 					return
 				}
 
-				err = ws.WriteJSON(status)
+				err = WriteCustomJSON(ws,status)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 			}
 
-			err := ws.WriteJSON(GameResponse{
+			err := WriteCustomJSON(ws,GameResponse{
 				RequestID: req.RequestID,
 				IsSuccess: success,
 			})
@@ -693,7 +710,7 @@ func serveGameConn(ws *websocket.Conn, roomName string) {
 				return
 			}
 
-			err = ws.WriteJSON(status)
+			err = WriteCustomJSON(ws,status)
 			if err != nil {
 				log.Println(err)
 				return
