@@ -94,14 +94,18 @@
   version = "v1.1.4"
 
 [[projects]]
+  digest = "1:fcb101cb896bcfb60d004d9c65cdebd597489bb0a25f0ea063513029ac99487e"
   name = "github.com/willf/bitset"
   packages = ["."]
+  pruneopts = ""
   revision = "e553b05586428962bf7058d1044519d87ca72d74"
   version = "v1.1.9"
 
 [[projects]]
+  digest = "1:86973c2ad2f8c2eae7e8148f4c6af4e5e10134cd0c276bb852c748b1f448374d"
   name = "github.com/willf/bloom"
   packages = ["."]
+  pruneopts = ""
   revision = "54e3b963ee1652b06c4562cb9b6020ebc6e36e59"
   version = "v2.0.3"
 
