@@ -6,15 +6,24 @@ import (
 	"log"
 	"math"
 	"math/big"
-	//"strconv"
+	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
 	"github.com/jmoiron/sqlx"
+	"golang.org/x/sync/singleflight"
 )
 var big1000 = big.NewInt(1000)
 
+
+const duration = 100 * time.Millisecond
+var group singleflight.Group
+var rooms sync.Map
+type Room struct {
+	wg *sync.WaitGroup
+	c *sync.Cond
+}
 
 type GameRequest struct {
 	RequestID int    `json:"request_id"`
@@ -395,6 +404,22 @@ func buyItem(roomName string, itemID int, countBought int, reqTime int64) bool {
 	return true
 }
 
+func getStatusWithGroup(roomName string) (*GameStatus, error) {
+	v, err, shared := group.Do(roomName, func() (interface{}, error) {
+		return getStatus(roomName)
+	})
+	if err != nil {
+		return nil, err
+	}
+	status, ok := v.(*GameStatus)
+	if !ok {
+		return nil, fmt.Errorf("Failed to assert v")
+	}
+	log.Println("getStatusWithGroup::room:", roomName)
+	log.Println("getStatusWithGroup::shared:", shared)
+	return status, nil
+}
+
 func getStatus(roomName string) (*GameStatus, error) {
 	tx, err := db.Beginx()
 	if err != nil {
@@ -604,11 +629,38 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 	}, nil
 }
 
+func roomHandler(roomName string, room Room) {
+	closeCh := make(chan struct{})
+	go func() {
+		room.wg.Wait()
+		close(closeCh)
+	}()
+	ticker := time.NewTicker(duration)
+	for {
+		select {
+		case <-ticker.C:
+			group.Forget(roomName)
+			room.c.Broadcast()
+		case <-closeCh:
+			rooms.Delete(roomName)
+			return
+		}
+	}
+}
+
 func serveGameConn(ws *websocket.Conn, roomName string) {
 	log.Println(ws.RemoteAddr(), "serveGameConn", roomName)
 	defer ws.Close()
 
-	status, err := getStatus(roomName)
+	v, loaded := rooms.LoadOrStore(roomName, Room{new(sync.WaitGroup), sync.NewCond(new(sync.Mutex))})
+	room := v.(Room)
+	room.wg.Add(1)
+	defer room.wg.Done()
+	if !loaded {
+		go roomHandler(roomName, room)
+	}
+
+	status, err := getStatusWithGroup(roomName)
 	if err != nil {
 		log.Println(err)
 		return
@@ -664,7 +716,10 @@ func serveGameConn(ws *websocket.Conn, roomName string) {
 
 			if success {
 				// GameResponse を返却する前に 反映済みの GameStatus を返す
-				status, err := getStatus(roomName)
+				room.c.L.Lock()
+				room.c.Wait()
+				room.c.L.Unlock()
+				status, err := getStatusWithGroup(roomName)
 				if err != nil {
 					log.Println(err)
 					return
@@ -686,7 +741,7 @@ func serveGameConn(ws *websocket.Conn, roomName string) {
 				return
 			}
 		case <-ticker.C:
-			status, err := getStatus(roomName)
+			status, err := getStatusWithGroup(roomName)
 			if err != nil {
 				log.Println(err)
 				return
