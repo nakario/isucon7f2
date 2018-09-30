@@ -71,7 +71,8 @@ func redis_connection() *redis.Client {
 		Password: "", // no password set
 		DB:       0,  // use default DB
 	})
-	_, err := client.Ping().Result()
+	pong, err := client.Ping().Result()
+	fmt.Printf(pong)
 	if err != nil {
 		log.Printf("Fail ", err)
 	}
