@@ -35,28 +35,59 @@ var itemLists []mItem = []mItem{
 	mItem {ItemID: 12 , Power1:  1000 ,Power2:  9000,Power3:     0,Power4: 17,Price1:   963,Price2: 7689,Price3:    1,Price4: 19,},
 	mItem {ItemID: 13 , Power1: 11000 ,Power2: 11000,Power3: 11000,Power4: 23,Price1: 10000,Price2:    2,Price3:    2,Price4: 29,},
 }
-func (item *mItem) GetPower(count int) *big.Int {
-	// power(x):=(cx+1)*d^(ax+b)
-	a := item.Power1
-	b := item.Power2
-	c := item.Power3
-	d := item.Power4
-	x := int64(count)
 
+func exp4(a,b,c,d,x int64) *big.Int {
+	// power(x):=(cx+1)*d^(ax+b)
 	s := big.NewInt(c*x + 1)
 	t := new(big.Int).Exp(big.NewInt(d), big.NewInt(a*x+b), nil)
 	return new(big.Int).Mul(s, t)
+}
+
+
+const bufferNum = 50
+var inittedBuffer = false
+
+func initPowerBuffer() [][]*big.Int {
+	result := make([][]*big.Int ,len(itemLists))
+	for i := range result {
+		if i == 0 { continue }
+		result[i] = make([]*big.Int,bufferNum)
+		item := itemLists[i]
+		for j := range result[i] {
+			result[i][j] = exp4(item.Power1,item.Power2,item.Power3,item.Power4,int64(j))
+		}
+	}
+	return result
+}
+func initPriceBuffer() [][]*big.Int {
+	result := make([][]*big.Int ,len(itemLists))
+	for i := range result {
+		if i == 0 { continue }
+		result[i] = make([]*big.Int,bufferNum)
+		item := itemLists[i]
+		for j := range result[i] {
+			result[i][j] =  exp4(item.Price1,item.Price2,item.Price3,item.Price4,int64(j))
+		}
+	}
+	inittedBuffer = true
+	return result
+}
+var powerBuffer = initPowerBuffer()
+var priceBuffer = initPriceBuffer()
+
+
+func (item *mItem) GetPower(count int) *big.Int {
+	if inittedBuffer &&  count < bufferNum {
+		return powerBuffer[item.ItemID][count]
+	}
+	return exp4(item.Power1,item.Power2,item.Power3,item.Power4,int64(count))
 }
 
 func (item *mItem) GetPrice(count int) *big.Int {
-	// price(x):=(cx+1)*d^(ax+b)
-	a := item.Price1
-	b := item.Price2
-	c := item.Price3
-	d := item.Price4
-	x := int64(count)
-
-	s := big.NewInt(c*x + 1)
-	t := new(big.Int).Exp(big.NewInt(d), big.NewInt(a*x+b), nil)
-	return new(big.Int).Mul(s, t)
+	if inittedBuffer && count < bufferNum {
+		return priceBuffer[item.ItemID][count]
+	}
+	return exp4(item.Price1,item.Price2,item.Price3,item.Price4,int64(count))
 }
+
+
