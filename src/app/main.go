@@ -9,15 +9,17 @@ import (
 	"os"
 	"time"
 
+	"net/http/pprof"
+
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/jmoiron/sqlx"
-	"net/http/pprof"
 )
 
 var (
-	db *sqlx.DB
+	db     *sqlx.DB
+	client *redis.Client
 )
 
 func initDB() {
@@ -55,6 +57,24 @@ func initDB() {
 	db.SetMaxOpenConns(20)
 	db.SetConnMaxLifetime(5 * time.Minute)
 	log.Printf("Succeeded to connect db.")
+}
+
+func redis_connection() *redis.Client {
+	redis_host := os.Getenv("ISU_REDIS_HOST")
+	redis_port := os.Getenv("ISU_REDIS_PORT")
+	IP_PORT := redis_host + ":" + redis_port
+
+	//redisに接続
+	c := redis.NewClient(&redis.Options{
+		Addr:     IP_PORT,
+		Password: "", // no password set
+		DB:       0,  // use default DB
+	})
+	pong, err := client.Ping().Result()
+	if err != nil {
+		exit(1)
+	}
+	return c
 }
 
 func getInitializeHandler(w http.ResponseWriter, r *http.Request) {
