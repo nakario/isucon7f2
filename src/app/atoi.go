@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package app
+package main
 
 const fastSmalls = true // enable fast path for small integers
 const nSmalls = 100
