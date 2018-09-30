@@ -103,43 +103,7 @@ type GameStatus struct {
 	OnSale   []OnSale   `json:"on_sale"`
 }
 
-type mItem struct {
-	ItemID int   `db:"item_id"`
-	Power1 int64 `db:"power1"`
-	Power2 int64 `db:"power2"`
-	Power3 int64 `db:"power3"`
-	Power4 int64 `db:"power4"`
-	Price1 int64 `db:"price1"`
-	Price2 int64 `db:"price2"`
-	Price3 int64 `db:"price3"`
-	Price4 int64 `db:"price4"`
-}
 
-func (item *mItem) GetPower(count int) *big.Int {
-	// power(x):=(cx+1)*d^(ax+b)
-	a := item.Power1
-	b := item.Power2
-	c := item.Power3
-	d := item.Power4
-	x := int64(count)
-
-	s := big.NewInt(c*x + 1)
-	t := new(big.Int).Exp(big.NewInt(d), big.NewInt(a*x+b), nil)
-	return new(big.Int).Mul(s, t)
-}
-
-func (item *mItem) GetPrice(count int) *big.Int {
-	// price(x):=(cx+1)*d^(ax+b)
-	a := item.Price1
-	b := item.Price2
-	c := item.Price3
-	d := item.Price4
-	x := int64(count)
-
-	s := big.NewInt(c*x + 1)
-	t := new(big.Int).Exp(big.NewInt(d), big.NewInt(a*x+b), nil)
-	return new(big.Int).Mul(s, t)
-}
 
 func str2big(s string) *big.Int {
 	x := new(big.Int)
@@ -347,8 +311,7 @@ func buyItem(roomName string, itemID int, countBought int, reqTime int64) bool {
 		return false
 	}
 	for _, b := range buyings {
-		var item mItem
-		tx.Get(&item, "SELECT * FROM m_item WHERE item_id = ?", b.ItemID)
+		item := itemLists[b.ItemID]
 		cost := new(big.Int).Mul(item.GetPrice(b.Ordinal), big1000)
 		totalMilliIsu.Sub(totalMilliIsu, cost)
 		if b.Time <= reqTime {
@@ -356,9 +319,7 @@ func buyItem(roomName string, itemID int, countBought int, reqTime int64) bool {
 			totalMilliIsu.Add(totalMilliIsu, gain)
 		}
 	}
-
-	var item mItem
-	tx.Get(&item, "SELECT * FROM m_item WHERE item_id = ?", itemID)
+	item := itemLists[itemID]
 	need := new(big.Int).Mul(item.GetPrice(countBought+1), big1000)
 	if totalMilliIsu.Cmp(need) < 0 {
 		log.Println("not enough")
@@ -409,17 +370,6 @@ func getStatus(roomName string) (*GameStatus, error) {
 		return nil, fmt.Errorf("updateRoomTime failure")
 	}
 
-	mItems := map[int]mItem{}
-	var items []mItem
-	err = tx.Select(&items, "SELECT * FROM m_item")
-	if err != nil {
-		tx.Rollback()
-		return nil, err
-	}
-	for _, item := range items {
-		mItems[item.ItemID] = item
-	}
-
 	addings := []Adding{}
 	err = tx.Select(&addings, "SELECT time, isu FROM adding WHERE room_name = ?", roomName)
 	if err != nil {
@@ -439,7 +389,7 @@ func getStatus(roomName string) (*GameStatus, error) {
 		return nil, err
 	}
 
-	status, err := calcStatus(currentTime, mItems, addings, buyings)
+	status, err := calcStatus(currentTime, addings, buyings)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +399,7 @@ func getStatus(roomName string) (*GameStatus, error) {
 	return status, err
 }
 
-func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyings []Buying) (*GameStatus, error) {
+func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameStatus, error) {
 	var (
 		// 1ミリ秒に生産できる椅子の単位をミリ椅子とする
 		totalMilliIsu = big.NewInt(0)
@@ -469,7 +419,7 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 		buyingAt = map[int64][]Buying{} // Time => currentTime より先の Buying
 	)
 
-	for itemID := range mItems {
+	for itemID := range itemLists {
 		itemPower[itemID] = big.NewInt(0)
 		itemBuilding[itemID] = []Building{}
 	}
@@ -486,7 +436,7 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 	for _, b := range buyings {
 		// buying は 即座に isu を消費し buying.time からアイテムの効果を発揮する
 		itemBought[b.ItemID]++
-		m := mItems[b.ItemID]
+		m := itemLists[b.ItemID]
 		totalMilliIsu.Sub(totalMilliIsu, new(big.Int).Mul(m.GetPrice(b.Ordinal), big1000))
 
 		if b.Time <= currentTime {
@@ -500,7 +450,8 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 		}
 	}
 
-	for _, m := range mItems {
+	for i, m := range itemLists {
+		if i == 0 { continue }
 		itemPower0[m.ItemID] = big2exp(itemPower[m.ItemID])
 		itemBuilt0[m.ItemID] = itemBuilt[m.ItemID]
 		price := m.GetPrice(itemBought[m.ItemID] + 1)
@@ -536,7 +487,7 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 			updated = true
 			updatedID := map[int]bool{}
 			for _, b := range buyingAt[t] {
-				m := mItems[b.ItemID]
+				m := itemLists[b.ItemID]
 				updatedID[b.ItemID] = true
 				itemBuilt[b.ItemID]++
 				power := m.GetPower(b.Ordinal)
@@ -561,7 +512,8 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 		}
 
 		// 時刻 t で購入可能になったアイテムを記録する
-		for itemID := range mItems {
+		for itemID := range itemLists {
+			if itemID == 0 { continue }
 			if _, ok := itemOnSale[itemID]; ok {
 				continue
 			}
@@ -577,7 +529,8 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 	}
 
 	gsItems := []Item{}
-	for itemID, _ := range mItems {
+	for itemID, _ := range itemLists {
+		if itemID == 0 { continue }
 		gsItems = append(gsItems, Item{
 			ItemID:      itemID,
 			CountBought: itemBought[itemID],
