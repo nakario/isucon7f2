@@ -8,7 +8,7 @@ import (
 	"math/big"
 	"sync"
 	"time"
-
+	"github.com/pquerna/ffjson/ffjson"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
 	"github.com/jmoiron/sqlx"
@@ -112,6 +112,20 @@ type GameStatus struct {
 	Items    []Item     `json:"items"`
 	OnSale   []OnSale   `json:"on_sale"`
 }
+
+func WriteCustomJSON(c *websocket.Conn,v interface{}) error {
+	w, err := c.NextWriter(websocket.TextMessage)
+	if err != nil {
+		return err
+	}
+	err1 := ffjson.NewEncoder(w).Encode(v)
+	err2 := w.Close()
+	if err1 != nil {
+		return err1
+	}
+	return err2
+}
+
 
 func str2big(s string) *big.Int {
 	x := new(big.Int)
@@ -657,7 +671,7 @@ func serveGameConn(ws *websocket.Conn, roomName string) {
 		return
 	}
 
-	err = ws.WriteJSON(status)
+	err = WriteCustomJSON(ws,status)
 	if err != nil {
 		log.Println(err)
 		return
@@ -716,14 +730,14 @@ func serveGameConn(ws *websocket.Conn, roomName string) {
 					return
 				}
 
-				err = ws.WriteJSON(status)
+				err = WriteCustomJSON(ws,status)
 				if err != nil {
 					log.Println(err)
 					return
 				}
 			}
 
-			err := ws.WriteJSON(GameResponse{
+			err := WriteCustomJSON(ws,GameResponse{
 				RequestID: req.RequestID,
 				IsSuccess: success,
 			})
@@ -738,7 +752,7 @@ func serveGameConn(ws *websocket.Conn, roomName string) {
 				return
 			}
 
-			err = ws.WriteJSON(status)
+			err = WriteCustomJSON(ws,status)
 			if err != nil {
 				log.Println(err)
 				return
