@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/big"
-	"strconv"
-	"time"
 	"math"
+	"math/big"
+	//"strconv"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
@@ -134,12 +134,11 @@ func str2big(s string) *big.Int {
 	return x
 }
 
-
 // 桁数が増えても大丈夫なBigintのDiv
 func customBigIntDiv(a *big.Int, b *big.Int) int64 {
 	alen := len(a.Bits())
 	if alen < 4 {
-			return big.NewInt(0).Div(a, b).Int64()
+		return big.NewInt(0).Div(a, b).Int64()
 	}
 	an := big.NewInt(0).SetBits(a.Bits()[alen-3:])
 	bn := big.NewInt(0).SetBits(b.Bits()[alen-3:])
@@ -165,7 +164,7 @@ func int64ToExponential(significand, exponent int64) Exponential {
 }
 
 func setupTenCache() []big.Int {
-	var tenCache = make([]big.Int, 1500) // メモリに応じて適宜調整のこと
+	var tenCache = make([]big.Int, 50000) // メモリに応じて適宜調整のこと
 	bigTen := big.NewInt(10)
 	tenCache[0].Exp(bigTen, big.NewInt(int64(0)), nil)
 	for i := 1; i < len(tenCache); i++ {
@@ -176,6 +175,7 @@ func setupTenCache() []big.Int {
 
 var tenCache = setupTenCache()
 var ten = big.NewInt(10)
+
 func big2exp(n *big.Int) Exponential {
 	w := n.Bits()
 	if len(w) <= 1 {
@@ -189,16 +189,17 @@ func big2exp(n *big.Int) Exponential {
 	keta := int64(log10ed - 14.0)
 	if keta < int64(len(tenCache)) {
 		ketaInt := &tenCache[keta]
-		significand := customBigIntDiv(n,ketaInt)
+		significand := customBigIntDiv(n, ketaInt)
 		return int64ToExponential(significand, keta)
 	} else {
 		ketaInt := big.NewInt(0).Exp(ten, big.NewInt(keta), nil)
-		significand := customBigIntDiv(n,ketaInt)
+		significand := customBigIntDiv(n, ketaInt)
 		return int64ToExponential(significand, keta)
 	}
 }
 
-func big2expBase(n *big.Int) Exponential {
+/*
+func big2exp(n *big.Int) Exponential {
 	s := n.String()
 
 	if len(s) <= 15 {
@@ -211,7 +212,7 @@ func big2expBase(n *big.Int) Exponential {
 	}
 	return Exponential{t, int64(len(s) - 15)}
 }
-
+*/
 func getCurrentTime() (int64, error) {
 	var currentTime int64
 	err := db.Get(&currentTime, "SELECT floor(unix_timestamp(current_timestamp(3))*1000)")
