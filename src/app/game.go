@@ -459,9 +459,8 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 			totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(power, big.NewInt(currentTime-b.Time)))
 			totalPower.Add(totalPower, power)
 			itemPower[b.ItemID].Add(itemPower[b.ItemID], power)
-		} else {
+		} else if bIndex == len(buyings) {
 			bIndex = i
-			break
 		}
 	}
 
