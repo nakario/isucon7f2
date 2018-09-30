@@ -310,7 +310,7 @@ func buyItem(roomName string, itemID int, countBought int, reqTime int64) bool {
 	}
 
 	for _, a := range addings {
-		totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(str2big(a.Isu), big1000))
+		totalMilliIsu.Add(totalMilliIsu, str2big(a.Isu+"000"))
 	}
 
 	var buyings []Buying
@@ -440,7 +440,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 	for i, a := range addings {
 		// adding は adding.time に isu を増加させる
 		if a.Time <= currentTime {
-			totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(str2big(a.Isu), big1000))
+			totalMilliIsu.Add(totalMilliIsu, str2big(a.Isu+"000"))
 		} else {
 			aIndex = i
 			break
@@ -494,7 +494,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		if aIndex < len(addings) && addings[aIndex].Time == t {
 			updated = true
 			a := addings[aIndex]
-			totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(str2big(a.Isu), big1000)) //
+			totalMilliIsu.Add(totalMilliIsu, str2big(a.Isu+"000"))
 			aIndex ++
 		}
 		for ; bIndex < len(buyings) && buyings[bIndex].Time == t ;bIndex++ {
