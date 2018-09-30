@@ -50,10 +50,28 @@
   version = "v1.0.0"
 
 [[projects]]
+  name = "github.com/spaolacci/murmur3"
+  packages = ["."]
+  revision = "9f5d223c60793748f04a9d5b4b4eacddfc1f755d"
+  version = "v1.1"
+
+[[projects]]
   name = "github.com/stretchr/testify"
   packages = ["assert"]
   revision = "69483b4bd14f5845b5a1e55bca19e954e827f1d0"
   version = "v1.1.4"
+
+[[projects]]
+  name = "github.com/willf/bitset"
+  packages = ["."]
+  revision = "e553b05586428962bf7058d1044519d87ca72d74"
+  version = "v1.1.9"
+
+[[projects]]
+  name = "github.com/willf/bloom"
+  packages = ["."]
+  revision = "54e3b963ee1652b06c4562cb9b6020ebc6e36e59"
+  version = "v2.0.3"
 
 [[projects]]
   branch = "master"
@@ -64,6 +82,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "5d3499e900b589ff74b072caafd1593bbf78b10281ad3417cb06146104bb5012"
+  inputs-digest = "52c55988fc7225cda79a09e1b045250f7605ebd49ac28eee6e7370c7742ae533"
   solver-name = "gps-cdcl"
   solver-version = 1
