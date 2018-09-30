@@ -2,15 +2,19 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"math"
 	"math/big"
 	"sync"
 	"time"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
 	"github.com/jmoiron/sqlx"
+	"github.com/willf/bloom"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -56,13 +60,13 @@ func (n Exponential) MarshalJSON() ([]byte, error) {
 	bufexp := FormatInt(n.Exponent)
 	lmat := len(bufmat)
 	lexp := len(bufexp)
-	result := make([]byte,lmat + 3 + lexp)
+	result := make([]byte, lmat+3+lexp)
 	result[0] = '['
-	copy(result[1:lmat+1],bufmat)
+	copy(result[1:lmat+1], bufmat)
 	result[lmat+1] = ','
-	copy(result[lmat+2:len(result) - 1],bufexp)
-	result[len(result) - 1] = ']'
-	return result,nil
+	copy(result[lmat+2:len(result)-1], bufexp)
+	result[len(result)-1] = ']'
+	return result, nil
 }
 
 type Adding struct {
@@ -111,8 +115,6 @@ type GameStatus struct {
 	Items    []Item     `json:"items"`
 	OnSale   []OnSale   `json:"on_sale"`
 }
-
-
 
 func str2big(s string) *big.Int {
 	x := new(big.Int)
@@ -229,6 +231,43 @@ func updateRoomTime(tx *sqlx.Tx, roomName string, reqTime int64) (int64, bool) {
 	return currentTime, true
 }
 
+type IsuReq struct {
+	roomName string
+	reqTime  int64
+	ch       chan bool
+}
+
+var addReqCh = make(chan IsuReq, 0)
+var testReqCh = make(chan IsuReq, 0)
+var initCh = make(chan struct{}, 0)
+
+func isuFilterHandler() {
+	filters := make(map[string]*bloom.BloomFilter)
+	b := make([]byte, 8)
+	for {
+		select {
+		case addReq := <-addReqCh:
+			filter, ok := filters[addReq.roomName]
+			if !ok {
+				filter := bloom.New(8096, 5)
+				filters[addReq.roomName] = filter
+			}
+			binary.BigEndian.PutUint64(b, uint64(addReq.reqTime))
+			filter.Add(b)
+		case testReq := <-testReqCh:
+			filter, ok := filters[testReq.roomName]
+			if !ok {
+				filter := bloom.New(8096, 5)
+				filters[testReq.roomName] = filter
+			}
+			binary.BigEndian.PutUint64(b, uint64(testReq.reqTime))
+			testReq.ch <- filter.Test(b)
+		case <-initCh:
+			filters = make(map[string]*bloom.BloomFilter)
+		}
+	}
+}
+
 func addIsu(roomName string, reqIsu *big.Int, reqTime int64) bool {
 	tx, err := db.Beginx()
 	if err != nil {
@@ -242,28 +281,45 @@ func addIsu(roomName string, reqIsu *big.Int, reqTime int64) bool {
 		return false
 	}
 
-	_, err = tx.Exec("INSERT INTO adding(room_name, time, isu) VALUES (?, ?, '0') ON DUPLICATE KEY UPDATE isu=isu", roomName, reqTime)
-	if err != nil {
-		log.Println(err)
-		tx.Rollback()
-		return false
-	}
+	ch := make(chan bool)
+	testReqCh <- IsuReq{roomName, reqTime, ch}
+	exist := <-ch
+	if exist {
+		// boom filter may return exist=true even if the item is not in the set actually
+		isu := big.NewInt(0)
+		var isuStr string
+		err = tx.QueryRow("SELECT isu FROM adding WHERE room_name = ? AND time = ? FOR UPDATE", roomName, reqTime).Scan(&isuStr)
+		if err == sql.ErrNoRows {
+			_, err = tx.Exec("INSERT INTO adding(room_name, time, isu) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE isu=isu", roomName, reqTime, reqIsu.String())
+			if err != nil {
+				log.Println(err)
+				tx.Rollback()
+				return false
+			}
+			addReqCh <- IsuReq{roomName, reqTime, nil}
+		} else if err != nil {
+			log.Println(err)
+			tx.Rollback()
+			return false
+		} else {
+			isu = str2big(isuStr)
 
-	var isuStr string
-	err = tx.QueryRow("SELECT isu FROM adding WHERE room_name = ? AND time = ? FOR UPDATE", roomName, reqTime).Scan(&isuStr)
-	if err != nil {
-		log.Println(err)
-		tx.Rollback()
-		return false
-	}
-	isu := str2big(isuStr)
-
-	isu.Add(isu, reqIsu)
-	_, err = tx.Exec("UPDATE adding SET isu = ? WHERE room_name = ? AND time = ?", isu.String(), roomName, reqTime)
-	if err != nil {
-		log.Println(err)
-		tx.Rollback()
-		return false
+			isu.Add(isu, reqIsu)
+			_, err = tx.Exec("UPDATE adding SET isu = ? WHERE room_name = ? AND time = ?", isu.String(), roomName, reqTime)
+			if err != nil {
+				log.Println(err)
+				tx.Rollback()
+				return false
+			}
+		}
+	} else {
+		_, err = tx.Exec("INSERT INTO adding(room_name, time, isu) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE isu=isu", roomName, reqTime, reqIsu.String())
+		if err != nil {
+			log.Println(err)
+			tx.Rollback()
+			return false
+		}
+		addReqCh <- IsuReq{roomName, reqTime, nil}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -414,22 +470,24 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		totalMilliIsu = big.NewInt(0)
 		totalPower    = big.NewInt(0)
 
-		itemPower    = make([]*big.Int,len(itemLists))  // ItemID => Power
-		itemPrice    = make([]*big.Int,len(itemLists))    // ItemID => Price
-		itemPricex1000 = make([]*big.Int,len(itemLists)) // itemPricex1000
-		itemOnSale   = map[int]int64{}       // ItemID => OnSale
-		itemBuilt    = make([]int,len(itemLists))         // ItemID => BuiltCount
-		itemBought   = make([]int,len(itemLists))         // ItemID => CountBought
-		itemBuilding = make([][]Building,len(itemLists))  // ItemID => Buildings
-		itemPower0   = make([]Exponential,len(itemLists)) // ItemID => currentTime における Power
-		itemBuilt0   = make([]int,len(itemLists))        // ItemID => currentTime における BuiltCount
+		itemPower      = make([]*big.Int, len(itemLists))    // ItemID => Power
+		itemPrice      = make([]*big.Int, len(itemLists))    // ItemID => Price
+		itemPricex1000 = make([]*big.Int, len(itemLists))    // itemPricex1000
+		itemOnSale     = map[int]int64{}                     // ItemID => OnSale
+		itemBuilt      = make([]int, len(itemLists))         // ItemID => BuiltCount
+		itemBought     = make([]int, len(itemLists))         // ItemID => CountBought
+		itemBuilding   = make([][]Building, len(itemLists))  // ItemID => Buildings
+		itemPower0     = make([]Exponential, len(itemLists)) // ItemID => currentTime における Power
+		itemBuilt0     = make([]int, len(itemLists))         // ItemID => currentTime における BuiltCount
 
 		addingAt = map[int64]Adding{}   // Time => currentTime より先の Adding
 		buyingAt = map[int64][]Buying{} // Time => currentTime より先の Buying
 	)
 
 	for itemID := range itemLists {
-		if itemID == 0 { continue }
+		if itemID == 0 {
+			continue
+		}
 		itemPower[itemID] = big.NewInt(0)
 		itemBuilding[itemID] = []Building{}
 	}
@@ -461,7 +519,9 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 	}
 
 	for i, m := range itemLists {
-		if i == 0 { continue }
+		if i == 0 {
+			continue
+		}
 		itemPower0[m.ItemID] = big2exp(itemPower[m.ItemID])
 		itemBuilt0[m.ItemID] = itemBuilt[m.ItemID]
 		price := m.GetPrice(itemBought[m.ItemID] + 1)
@@ -531,7 +591,9 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 
 		// 時刻 t で購入可能になったアイテムを記録する
 		for itemID := range itemLists {
-			if itemID == 0 { continue }
+			if itemID == 0 {
+				continue
+			}
 			if _, ok := itemOnSale[itemID]; ok {
 				continue
 			}
@@ -548,7 +610,9 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 
 	gsItems := []Item{}
 	for itemID, _ := range itemLists {
-		if itemID == 0 { continue }
+		if itemID == 0 {
+			continue
+		}
 		gsItems = append(gsItems, Item{
 			ItemID:      itemID,
 			CountBought: itemBought[itemID],
