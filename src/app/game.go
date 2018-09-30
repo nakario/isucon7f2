@@ -198,8 +198,7 @@ func updateRoomTime(tx *sqlx.Tx, roomName string, reqTime int64) (int64, bool) {
 	roomTime, err := client.Get(room_name).Result()
 	if err == redis.Nil {
 		roomTime = 0
-	}
-	else if err != nil {
+	} else if err != nil {
 		return 0, false
 	}
 
