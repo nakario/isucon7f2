@@ -488,7 +488,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		// 時刻 t で発生する buying を計算する
 		if _, ok := buyingAt[t]; ok {
 			updated = true
-			updatedID := make([]bool,len(itemLists))
+			updatedID := map[int]bool{}
 			for _, b := range buyingAt[t] {
 				m := itemLists[b.ItemID]
 				updatedID[b.ItemID] = true
@@ -497,9 +497,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 				itemPower[b.ItemID].Add(itemPower[b.ItemID], power)
 				totalPower.Add(totalPower, power)
 			}
-			for id,updated := range updatedID {
-				if id == 0 { continue }
-				if ! updated { continue }
+			for id := range updatedID {
 				itemBuilding[id] = append(itemBuilding[id], Building{
 					Time:       t,
 					CountBuilt: itemBuilt[id],
