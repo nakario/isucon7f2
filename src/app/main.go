@@ -58,6 +58,12 @@ func initDB() {
 	db.SetMaxOpenConns(20)
 	db.SetConnMaxLifetime(5 * time.Minute)
 	log.Printf("Succeeded to connect db.")
+
+	var addings []Adding
+	db.Select(&addings, "SELECT * FROM adding")
+	for _, adding := range addings {
+		addReqCh <- IsuReq{adding.RoomName, adding.Time, nil}
+	}
 }
 
 func redis_connection() *redis.Client {
@@ -83,6 +89,7 @@ func getInitializeHandler(w http.ResponseWriter, r *http.Request) {
 	db.MustExec("TRUNCATE TABLE adding")
 	db.MustExec("TRUNCATE TABLE buying")
 	db.MustExec("TRUNCATE TABLE room_time")
+	initCh <- struct{}{}
 	w.WriteHeader(204)
 }
 
@@ -128,6 +135,8 @@ func attachPprof(router *mux.Router) {
 }
 
 func main() {
+	go isuFilterHandler()
+
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	initDB()
 	client = redis_connection()

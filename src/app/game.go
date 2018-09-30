@@ -223,6 +223,37 @@ func updateRoomTime(tx *sqlx.Tx, roomName string, reqTime int64) (int64, bool) {
 	return currentTime, true
 }
 
+type IsuReq struct {
+	roomName string
+	reqTime  int64
+	ch       chan bool
+}
+
+var addReqCh = make(chan IsuReq, 0)
+var testReqCh = make(chan IsuReq, 0)
+var initCh = make(chan struct{}, 0)
+
+func isuFilterHandler() {
+	filters := make(map[string]map[int64]struct{})
+	for {
+		select {
+		case addReq := <-addReqCh:
+			if _, ok := filters[addReq.roomName]; !ok {
+				filters[addReq.roomName] = make(map[int64]struct{})
+			}
+			filters[addReq.roomName][addReq.reqTime] = struct{}{}
+		case testReq := <-testReqCh:
+			if _, ok := filters[testReq.roomName]; !ok {
+				filters[testReq.roomName] = make(map[int64]struct{})
+			}
+			_, ok := filters[testReq.roomName][testReq.reqTime]
+			testReq.ch <- ok
+		case <-initCh:
+			filters = make(map[string]map[int64]struct{})
+		}
+	}
+}
+
 func addIsu(roomName string, reqIsu *big.Int, reqTime int64) bool {
 	tx, err := db.Beginx()
 	if err != nil {
@@ -236,28 +267,35 @@ func addIsu(roomName string, reqIsu *big.Int, reqTime int64) bool {
 		return false
 	}
 
-	_, err = tx.Exec("INSERT INTO adding(room_name, time, isu) VALUES (?, ?, '0') ON DUPLICATE KEY UPDATE isu=isu", roomName, reqTime)
-	if err != nil {
-		log.Println(err)
-		tx.Rollback()
-		return false
-	}
+	ch := make(chan bool)
+	testReqCh <- IsuReq{roomName, reqTime, ch}
+	exist := <-ch
+	if exist {
+		isu := big.NewInt(0)
+		var isuStr string
+		err = tx.QueryRow("SELECT isu FROM adding WHERE room_name = ? AND time = ? FOR UPDATE", roomName, reqTime).Scan(&isuStr)
+		if err != nil {
+			log.Println(err)
+			tx.Rollback()
+			return false
+		}
+		isu = str2big(isuStr)
 
-	var isuStr string
-	err = tx.QueryRow("SELECT isu FROM adding WHERE room_name = ? AND time = ? FOR UPDATE", roomName, reqTime).Scan(&isuStr)
-	if err != nil {
-		log.Println(err)
-		tx.Rollback()
-		return false
-	}
-	isu := str2big(isuStr)
-
-	isu.Add(isu, reqIsu)
-	_, err = tx.Exec("UPDATE adding SET isu = ? WHERE room_name = ? AND time = ?", isu.String(), roomName, reqTime)
-	if err != nil {
-		log.Println(err)
-		tx.Rollback()
-		return false
+		isu.Add(isu, reqIsu)
+		_, err = tx.Exec("UPDATE adding SET isu = ? WHERE room_name = ? AND time = ?", isu.String(), roomName, reqTime)
+		if err != nil {
+			log.Println(err)
+			tx.Rollback()
+			return false
+		}
+	} else {
+		_, err = tx.Exec("INSERT INTO adding(room_name, time, isu) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE isu=isu", roomName, reqTime, reqIsu.String())
+		if err != nil {
+			log.Println(err)
+			tx.Rollback()
+			return false
+		}
+		addReqCh <- IsuReq{roomName, reqTime, nil}
 	}
 
 	if err := tx.Commit(); err != nil {
