@@ -129,7 +129,7 @@ func attachPprof(router *mux.Router) {
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	initDB()
-
+	client = redis_connection()
 	r := mux.NewRouter()
 	attachPprof(r)
 	r.HandleFunc("/initialize", getInitializeHandler)
