@@ -8,8 +8,8 @@ import (
 	"math/big"
 	"sync"
 	"time"
+	"encoding/binary"
 	"bytes"
-  "strconv"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
 	"github.com/jmoiron/sqlx"
@@ -55,14 +55,15 @@ type Exponential struct {
 
 func (n Exponential) MarshalJSON() ([]byte, error) {
 	var buffer bytes.Buffer
+	buf := make([]byte, binary.MaxVarintLen64)
 	buffer.WriteByte('[')
-	buffer.WriteString(strconv.Itoa(int(n.Mantissa)))
+	x := binary.PutVarint(buf,n.Mantissa)
+	buffer.Write(buf[:x])
 	buffer.WriteByte(',')
-	buffer.WriteString(strconv.Itoa(int(n.Exponent)))
+	x = binary.PutVarint(buf,n.Exponent)
+	buffer.Write(buf[:x])
 	buffer.WriteByte(']')
 	return buffer.Bytes(),nil
-	// return []byte("[" +  +  "," + strconv.Itoa(int(n.Exponent)) +  "]") , nil
-	// return []byte(fmt.Sprintf("[%d,%d]", n.Mantissa, n.Exponent)), nil
 }
 
 type Adding struct {
