@@ -425,7 +425,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		itemPower0   = make([]Exponential,len(itemLists)) // ItemID => currentTime における Power
 		itemBuilt0   = make([]int,len(itemLists))        // ItemID => currentTime における BuiltCount
 	)
-	// WARN: 消したい
+	// WARN: 消せない
 	sort.Slice(addings, func(i, j int) bool { return addings[i].Time < addings[j].Time })
 	sort.Slice(buyings, func(i, j int) bool { return buyings[i].Time < buyings[j].Time })
 	aIndex := len(addings)
@@ -438,10 +438,11 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		itemOnSale[itemID] = -1
 	}
 
+	totalIsu := big.NewInt(0) // 最後に1000倍して⬆に足す
 	for i, a := range addings {
 		// adding は adding.time に isu を増加させる
 		if a.Time <= currentTime {
-			totalMilliIsu.Add(totalMilliIsu, new(big.Int).Mul(str2big(a.Isu), big1000))
+			totalIsu.Add(totalIsu, str2big(a.Isu))
 		} else {
 			aIndex = i
 			break
@@ -453,7 +454,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		// buying は 即座に isu を消費し buying.time からアイテムの効果を発揮する
 		itemBought[b.ItemID]++
 		m := itemLists[b.ItemID]
-		totalMilliIsu.Sub(totalMilliIsu, new(big.Int).Mul(m.GetPrice(b.Ordinal), big1000))
+		totalIsu.Sub(totalIsu, m.GetPrice(b.Ordinal))
 		if b.Time <= currentTime {
 			itemBuilt[b.ItemID]++
 			power := m.GetPower(itemBought[b.ItemID])
@@ -464,6 +465,7 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 			bIndex = i
 		}
 	}
+	totalMilliIsu.Add(totalMilliIsu,new(big.Int).Mul(totalIsu,big1000))
 
 	for i, m := range itemLists {
 		if i == 0 { continue }
