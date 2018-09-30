@@ -196,7 +196,7 @@ func getCurrentTime() int64 {
 func updateRoomTime(tx *sqlx.Tx, roomName string, reqTime int64) (int64, bool) {
 	// See page 13 and 17 in https://www.slideshare.net/ichirin2501/insert-51938787
 	var roomTime int64
-	roomTime, err := client.Get(roomName).Result()
+	roomTime, err := client.GetBit(roomName, 0).Result()
 	if err == redis.Nil {
 		roomTime = 0
 	} else if err != nil {
