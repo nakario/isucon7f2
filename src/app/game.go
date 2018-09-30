@@ -497,8 +497,9 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 				itemPower[b.ItemID].Add(itemPower[b.ItemID], power)
 				totalPower.Add(totalPower, power)
 			}
-			for id := range updatedID {
+			for id,updated := range updatedID {
 				if id == 0 { continue }
+				if ! updated { continue }
 				itemBuilding[id] = append(itemBuilding[id], Building{
 					Time:       t,
 					CountBuilt: itemBuilt[id],
