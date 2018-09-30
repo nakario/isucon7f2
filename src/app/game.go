@@ -8,7 +8,6 @@ import (
 	"math/big"
 	"sync"
 	"time"
-
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/websocket"
 	"github.com/jmoiron/sqlx"
@@ -53,7 +52,17 @@ type Exponential struct {
 }
 
 func (n Exponential) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("[%d,%d]", n.Mantissa, n.Exponent)), nil
+	bufmat := FormatInt(n.Mantissa)
+	bufexp := FormatInt(n.Exponent)
+	lmat := len(bufmat)
+	lexp := len(bufexp)
+	result := make([]byte,lmat + 3 + lexp)
+	result[0] = '['
+	copy(result[1:lmat+1],bufmat)
+	result[lmat+1] = ','
+	copy(result[lmat+2:len(result) - 1],bufexp)
+	result[len(result) - 1] = ']'
+	return result,nil
 }
 
 type Adding struct {
