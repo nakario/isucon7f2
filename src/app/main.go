@@ -9,15 +9,18 @@ import (
 	"os"
 	"time"
 
+	"net/http/pprof"
+
+	"github.com/go-redis/redis"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/jmoiron/sqlx"
-	"net/http/pprof"
 )
 
 var (
-	db *sqlx.DB
+	db     *sqlx.DB
+	client *redis.Client
 )
 
 func initDB() {
@@ -61,6 +64,25 @@ func initDB() {
 	for _, adding := range addings {
 		addReqCh <- IsuReq{adding.RoomName, adding.Time, nil}
 	}
+}
+
+func redis_connection() *redis.Client {
+	redis_host := os.Getenv("ISU_REDIS_HOST")
+	redis_port := os.Getenv("ISU_REDIS_PORT")
+	IP_PORT := redis_host + ":" + redis_port
+
+	//redisに接続
+	c := redis.NewClient(&redis.Options{
+		Addr:     IP_PORT,
+		Password: "", // no password set
+		DB:       0,  // use default DB
+	})
+	pong, err := c.Ping().Result()
+	fmt.Printf(pong)
+	if err != nil {
+		log.Printf("Fail ", err)
+	}
+	return c
 }
 
 func getInitializeHandler(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +139,7 @@ func main() {
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	initDB()
-
+	client = redis_connection()
 	r := mux.NewRouter()
 	attachPprof(r)
 	r.HandleFunc("/initialize", getInitializeHandler)
