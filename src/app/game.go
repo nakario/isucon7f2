@@ -595,7 +595,7 @@ func calcStatus(currentTime int64, mItems map[int]mItem, addings []Adding, buyin
 			if _, ok := itemOnSale[itemID]; ok {
 				continue
 			}
-			if 0 <= totalMilliIsu.Cmp(itemPrice[itemID]) { //
+			if 0 <= totalMilliIsu.Cmp(itemPricex1000[itemID]) { //
 				itemOnSale[itemID] = t
 			}
 		}
