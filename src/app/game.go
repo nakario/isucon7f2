@@ -405,21 +405,22 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		totalMilliIsu = big.NewInt(0)
 		totalPower    = big.NewInt(0)
 
-		itemPower    = map[int]*big.Int{}    // ItemID => Power
-		itemPrice    = map[int]*big.Int{}    // ItemID => Price
-		itemPricex1000 = map[int]*big.Int{}   // itemPricex1000
+		itemPower    = make([]*big.Int,len(itemLists))  // ItemID => Power
+		itemPrice    = make([]*big.Int,len(itemLists))    // ItemID => Price
+		itemPricex1000 = make([]*big.Int,len(itemLists)) // itemPricex1000
 		itemOnSale   = map[int]int64{}       // ItemID => OnSale
-		itemBuilt    = map[int]int{}         // ItemID => BuiltCount
-		itemBought   = map[int]int{}         // ItemID => CountBought
-		itemBuilding = map[int][]Building{}  // ItemID => Buildings
-		itemPower0   = map[int]Exponential{} // ItemID => currentTime における Power
-		itemBuilt0   = map[int]int{}         // ItemID => currentTime における BuiltCount
+		itemBuilt    = make([]int,len(itemLists))         // ItemID => BuiltCount
+		itemBought   = make([]int,len(itemLists))         // ItemID => CountBought
+		itemBuilding = make([][]Building,len(itemLists))  // ItemID => Buildings
+		itemPower0   = make([]Exponential,len(itemLists)) // ItemID => currentTime における Power
+		itemBuilt0   = make([]int,len(itemLists))        // ItemID => currentTime における BuiltCount
 
 		addingAt = map[int64]Adding{}   // Time => currentTime より先の Adding
 		buyingAt = map[int64][]Buying{} // Time => currentTime より先の Buying
 	)
 
 	for itemID := range itemLists {
+		if itemID == 0 { continue }
 		itemPower[itemID] = big.NewInt(0)
 		itemBuilding[itemID] = []Building{}
 	}
@@ -485,22 +486,30 @@ func calcStatus(currentTime int64, addings []Adding, buyings []Buying) (*GameSta
 		// 時刻 t で発生する buying を計算する
 		if _, ok := buyingAt[t]; ok {
 			updated = true
-			updatedID := map[int]bool{}
+			// updatedID := map[int]bool{}
 			for _, b := range buyingAt[t] {
 				m := itemLists[b.ItemID]
-				updatedID[b.ItemID] = true
+				// updatedID[b.ItemID] = true
 				itemBuilt[b.ItemID]++
 				power := m.GetPower(b.Ordinal)
 				itemPower[b.ItemID].Add(itemPower[b.ItemID], power)
 				totalPower.Add(totalPower, power)
-			}
-			for id := range updatedID {
+
+				// bad
+				id := b.ItemID
 				itemBuilding[id] = append(itemBuilding[id], Building{
 					Time:       t,
 					CountBuilt: itemBuilt[id],
 					Power:      big2exp(itemPower[id]),
 				})
 			}
+			// for id := range updatedID {
+			// 	itemBuilding[id] = append(itemBuilding[id], Building{
+			// 		Time:       t,
+			// 		CountBuilt: itemBuilt[id],
+			// 		Power:      big2exp(itemPower[id]),
+			// 	})
+			// }
 		}
 
 		if updated {
